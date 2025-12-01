@@ -1,4 +1,4 @@
-import streamlit as st  # <--- This is the library we need
+import streamlit as st
 import json
 import random
 import os
@@ -7,10 +7,11 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 
-API_KEY = st.secrets["GEMINI_API_KEY"] 
+API_KEY = st.secrets["GEMINI_API_KEY"]
+
 DATA_FILE = "my_movie_database.json"
 
-# --- MASSIVE DATABASE (Static + Dynamic) ---
+# --- MASSIVE DATABASE ---
 HUGE_MOVIE_DATABASE = [
     "The Matrix", "Terminator 2: Judgment Day", "Mad Max: Fury Road", "Inception", 
     "The Dark Knight", "Blade Runner 2049", "Dune: Part One", "Dune: Part Two", "Aliens", 
@@ -104,25 +105,86 @@ HUGE_MOVIE_DATABASE = [
 st.set_page_config(
     page_title="CineTrack", 
     page_icon="🎬", 
-    layout="wide",
+    layout="centered", # Better for mobile than "wide"
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for that "App" feel
+# --- MOBILE CSS INJECTION ---
 st.markdown("""
     <style>
+    /* Remove padding to use more screen space */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    /* Make buttons huge and touch-friendly */
     .stButton>button {
         width: 100%;
-        border-radius: 12px;
-        height: 3em;
-        font-weight: bold;
-    }
-    .big-font {
-        font-size: 24px !important;
-        font-weight: bold;
-    }
-    div[data-testid="stMetricValue"] {
+        border-radius: 16px;
+        height: 4.5em; /* Taller buttons for thumbs */
+        font-weight: 800;
         font-size: 18px;
+        border: 1px solid #333;
+        transition: transform 0.1s;
+    }
+    
+    /* Button click effect */
+    .stButton>button:active {
+        transform: scale(0.98);
+    }
+
+    /* Style the tabs to look more like an app nav bar */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #0e1117;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+        padding: 10px;
+        border-top: 1px solid #333;
+        justify-content: space-around;
+        border-radius: 0px;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 5px;
+        color: #888;
+        font-size: 12px;
+        flex: 1;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #262730;
+        color: #FFD700;
+    }
+    
+    /* Hide the default hamburger menu */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Add padding to bottom of main content so nav bar doesn't cover it */
+    .main .block-container {
+        padding-bottom: 100px;
+    }
+    
+    /* Custom Card Style for List */
+    .movie-card {
+        background-color: #1c1c1c;
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        border: 1px solid #333;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -156,44 +218,23 @@ if 'skipped_session' not in st.session_state:
 
 # --- HELPER FUNCTIONS ---
 def add_rating(title, rating):
-    # Remove existing entry if present (to allow updates)
     st.session_state.user_movies = [m for m in st.session_state.user_movies if m['title'] != title]
-    
     st.session_state.user_movies.append({
         "title": title,
         "rating": rating,
         "added_at": datetime.now().isoformat()
     })
     save_data()
-    # Force refresh of current movie
     st.session_state.current_movie = None
 
 def delete_movie(title):
     st.session_state.user_movies = [m for m in st.session_state.user_movies if m['title'] != title]
     save_data()
 
-def get_stats():
-    movies = st.session_state.user_movies
-    return {
-        "total": len(movies),
-        "loved": len([m for m in movies if m['rating'] == 'loved']),
-        "liked": len([m for m in movies if m['rating'] == 'liked']),
-        "disliked": len([m for m in movies if m['rating'] == 'disliked']),
-        "hated": len([m for m in movies if m['rating'] == 'hated']),
-        "watchlist": len([m for m in movies if m['rating'] == 'watchlist'])
-    }
-
 def get_next_movie():
     seen_titles = {m['title'] for m in st.session_state.user_movies}
-    # Combine static DB with any dynamic AI generated ones
     full_pool = HUGE_MOVIE_DATABASE + st.session_state.dynamic_pool
-    
-    available = [
-        m for m in full_pool 
-        if m not in seen_titles 
-        and m not in st.session_state.skipped_session
-    ]
-    
+    available = [m for m in full_pool if m not in seen_titles and m not in st.session_state.skipped_session]
     if not available:
         return None
     return random.choice(available)
@@ -201,243 +242,200 @@ def get_next_movie():
 # --- GEMINI AI FUNCTIONS ---
 def call_gemini(prompt):
     if not API_KEY:
-        st.error("API Key is missing. Please add it to the code.")
+        st.error("API Key missing. Check code.")
         return None
-        
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key={API_KEY}"
     headers = {'Content-Type': 'application/json'}
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json"}
-    }
-    
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"responseMimeType": "application/json"}}
     try:
         response = requests.post(url, headers=headers, json=payload)
-        result = response.json()
-        text = result['candidates'][0]['content']['parts'][0]['text']
-        return json.loads(text)
-    except Exception as e:
-        st.error(f"AI Error: {e}")
+        return json.loads(response.json()['candidates'][0]['content']['parts'][0]['text'])
+    except:
         return None
 
 def generate_unlimited_movies():
-    seen_titles = [m['title'] for m in st.session_state.user_movies]
-    prompt = f"""
-      Generate a list of 20 popular, highly-rated movies from various genres.
-      Do NOT include any of these: {', '.join(seen_titles[:100])}.
-      Avoid these too: {', '.join(HUGE_MOVIE_DATABASE[:20])}.
-      Return ONLY a JSON array of strings (titles).
-    """
-    with st.spinner("Consulting the infinite movie scroll..."):
-        new_titles = call_gemini(prompt)
-        if new_titles:
-            st.session_state.dynamic_pool.extend(new_titles)
-            # De-duplicate
+    seen = [m['title'] for m in st.session_state.user_movies]
+    prompt = f"Generate 20 popular movie titles. Exclude: {', '.join(seen[:50])}. Return JSON array of strings."
+    with st.spinner("Finding new movies..."):
+        res = call_gemini(prompt)
+        if res:
+            st.session_state.dynamic_pool.extend(res)
             st.session_state.dynamic_pool = list(set(st.session_state.dynamic_pool))
             save_data()
-            st.success(f"Added {len(new_titles)} new movies to the pool!")
             st.rerun()
 
-# --- TABS ---
-tab_rapid, tab_list, tab_watch, tab_ai, tab_add = st.tabs(["🔀 Rapid", "📋 List", "⏰ Watch", "✨ AI", "➕ Add"])
+# --- MAIN APP UI ---
+
+# We use tabs as bottom navigation (via CSS hack above)
+# The order is: Rapid, List, Watchlist, AI, Add
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔥 Play", "📋 List", "⏰ Watch", "✨ AI", "➕ Add"])
 
 # === RAPID FIRE TAB ===
-with tab_rapid:
+with tab1:
     if st.session_state.current_movie is None:
         st.session_state.current_movie = get_next_movie()
 
     movie = st.session_state.current_movie
 
     if movie:
-        st.markdown(f"<h1 style='text-align: center; color: #FFD700;'>{movie}</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: gray;'>Have you seen this?</p>", unsafe_allow_html=True)
+        st.markdown(f"<div style='text-align:center; padding: 20px 0;'><h1 style='color:#FFD700; margin-bottom:0;'>{movie}</h1><p style='color:#666;'>Have you seen this?</p></div>", unsafe_allow_html=True)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("👍 Liked", key="btn_like"):
+        # 2x2 Grid for Main Actions (Better for Mobile)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("👍 LIKE", key="rf_like", type="primary"):
                 add_rating(movie, "liked")
                 st.rerun()
-            if st.button("👎 Dislike", key="btn_dislike"):
+            if st.button("👎 DISLIKE", key="rf_dislike"):
                 add_rating(movie, "disliked")
                 st.rerun()
         
-        with col2:
-            if st.button("❤️ Loved", key="btn_love"):
+        with c2:
+            if st.button("❤️ LOVE", key="rf_love", type="primary"):
                 add_rating(movie, "loved")
                 st.rerun()
-            if st.button("😠 Hated", key="btn_hate"):
+            if st.button("😠 HATE", key="rf_hate"):
                 add_rating(movie, "hated")
                 st.rerun()
 
-        col3, col4 = st.columns(2)
-        with col3:
-            if st.button("⏰ Watch Later", key="btn_watch"):
-                add_rating(movie, "watchlist")
-                st.rerun()
-        with col4:
-            if st.button("⏭️ Skip", key="btn_skip"):
-                st.session_state.skipped_session.add(movie)
-                st.session_state.current_movie = None
-                st.rerun()
-                
+        # Secondary Actions (Full Width)
+        st.write("") # Spacer
+        if st.button("⏰ Add to Watchlist", key="rf_watch"):
+            add_rating(movie, "watchlist")
+            st.rerun()
+            
+        if st.button("⏭️ Skip / Haven't Seen", key="rf_skip"):
+            st.session_state.skipped_session.add(movie)
+            st.session_state.current_movie = None
+            st.rerun()
+            
     else:
-        st.success("You have rated everything in the database!")
-        if st.button("Generate Unlimited Movies (AI)"):
+        st.info("🎉 Database empty!")
+        if st.button("Load More Movies (AI)", type="primary"):
             generate_unlimited_movies()
         if st.button("Reset Skips"):
             st.session_state.skipped_session.clear()
-            st.session_state.current_movie = None
             st.rerun()
 
-    # Footer Stats
-    st.divider()
-    s = get_stats()
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Loved", s['loved'])
-    c2.metric("Liked", s['liked'])
-    c3.metric("Disliked", s['disliked'])
-    c4.metric("Watched", s['total'])
-
 # === LIST TAB ===
-with tab_list:
-    st.header("Your History")
-    
-    # Filter out watchlist items
+with tab2:
+    st.markdown("### 🎬 History")
     history = [m for m in st.session_state.user_movies if m['rating'] != 'watchlist']
     history.sort(key=lambda x: x['added_at'], reverse=True)
     
     if not history:
-        st.info("No movies rated yet.")
-    else:
-        for m in history:
-            c1, c2, c3 = st.columns([0.6, 0.2, 0.2])
-            icon = {
-                "loved": "❤️", "liked": "👍", 
-                "disliked": "👎", "hated": "😠", "seen": "✔️"
-            }.get(m['rating'], "?")
-            
-            c1.write(f"**{m['title']}**")
-            c2.write(f"{icon} {m['rating'].upper()}")
-            if c3.button("🗑️", key=f"del_{m['title']}"):
+        st.caption("No history yet.")
+    
+    for m in history:
+        icon = {"loved": "❤️", "liked": "👍", "disliked": "👎", "hated": "😠"}.get(m['rating'], "?")
+        col_txt, col_del = st.columns([0.85, 0.15])
+        with col_txt:
+            st.markdown(f"<div class='movie-card'><b>{m['title']}</b><span>{icon}</span></div>", unsafe_allow_html=True)
+        with col_del:
+            if st.button("✖️", key=f"del_{m['title']}"):
                 delete_movie(m['title'])
                 st.rerun()
 
 # === WATCHLIST TAB ===
-with tab_watch:
-    st.header("Watchlist")
+with tab3:
+    st.markdown("### ⏰ Watchlist")
     watchlist = [m for m in st.session_state.user_movies if m['rating'] == 'watchlist']
     
     if not watchlist:
-        st.info("Watchlist is empty.")
-    else:
-        for m in watchlist:
-            c1, c2, c3 = st.columns([0.6, 0.2, 0.2])
-            c1.write(f"**{m['title']}**")
-            
-            # Allow quick rating from watchlist
-            if c2.button("Rate", key=f"rate_watch_{m['title']}"):
-                # In a real app we'd open a modal, here we just move to rapid fire logic or remove
-                # For simplicity, let's delete it so they can re-rate in Add tab, or we assume they watched it
-                delete_movie(m['title']) 
-                st.toast(f"Removed {m['title']} from watchlist")
+        st.caption("Nothing to watch yet.")
+        
+    for m in watchlist:
+        st.markdown(f"**{m['title']}**")
+        c_rate, c_del = st.columns(2)
+        with c_rate:
+            if st.button("Mark Watched", key=f"w_rate_{m['title']}"):
+                delete_movie(m['title']) # Quick logic: remove from watchlist to rate in Add tab
+                st.toast("Moved to history (rate it in Add tab)")
                 st.rerun()
-                
-            if c3.button("🗑️", key=f"del_w_{m['title']}"):
+        with c_del:
+            if st.button("Remove", key=f"w_del_{m['title']}"):
                 delete_movie(m['title'])
                 st.rerun()
+        st.divider()
 
 # === AI TAB ===
-with tab_ai:
-    st.header("AI Insights ✨")
+with tab4:
+    st.markdown("### ✨ AI Insights")
+    mode = st.radio("Select Mode", ["Recs", "Roast", "Vibe", "Trivia"], horizontal=True, label_visibility="collapsed")
     
-    option = st.selectbox("Choose AI Feature", ["Get Recommendations", "Roast My Taste", "Vibe Match", "Trivia"])
-    
-    if option == "Get Recommendations":
-        if st.button("Generate Recs"):
+    if mode == "Recs":
+        if st.button("Get Recommendations", type="primary"):
             liked = [m['title'] for m in st.session_state.user_movies if m['rating'] in ['liked', 'loved']]
-            seen = [m['title'] for m in st.session_state.user_movies]
-            
             if len(liked) < 3:
-                st.error("Rate at least 3 movies first!")
+                st.error("Rate more movies first!")
             else:
-                prompt = f"""
-                User likes: {', '.join(liked[-50:])}.
-                Recommend 5 movies NOT in: {', '.join(seen)}.
-                Return JSON schema: [{{'title': '', 'year': '', 'reason': '', 'emoji': ''}}]
-                """
+                prompt = f"User likes: {', '.join(liked[-30:])}. Recommend 5 movies. Return JSON: [{{'title':'', 'reason':''}}]"
                 with st.spinner("Thinking..."):
                     res = call_gemini(prompt)
                     if res:
                         for r in res:
-                            st.success(f"{r['emoji']} **{r['title']}** ({r['year']})")
-                            st.write(r['reason'])
+                            st.success(f"**{r['title']}**")
+                            st.caption(r['reason'])
 
-    elif option == "Roast My Taste":
-        if st.button("Roast Me"):
-            user_list = [f"{m['title']} ({m['rating']})" for m in st.session_state.user_movies[-50:]]
-            prompt = f"Roast this movie taste: {', '.join(user_list)}. Be snarky. Return JSON: {{'roast': 'text'}}"
-            with st.spinner("Preparing insults..."):
+    elif mode == "Roast":
+        if st.button("Roast My Taste", type="primary"):
+            user_list = [f"{m['title']} ({m['rating']})" for m in st.session_state.user_movies[-30:]]
+            prompt = f"Roast this taste: {', '.join(user_list)}. Be snarky. Return JSON: {{'roast': 'text'}}"
+            with st.spinner("Preparing insult..."):
                 res = call_gemini(prompt)
                 if res:
-                    st.warning(f"🔥 {res['roast']}")
+                    st.error(f"🔥 {res['roast']}")
 
-    elif option == "Vibe Match":
-        vibe = st.text_input("What's the vibe?", placeholder="e.g. 80s sci-fi but funny")
+    elif mode == "Vibe":
+        vibe = st.text_input("I'm in the mood for...", placeholder="e.g. 80s sci-fi but funny")
         if st.button("Find Movie"):
-            liked = [m['title'] for m in st.session_state.user_movies if m['rating'] in ['liked', 'loved']]
-            prompt = f"""
-            User likes: {', '.join(liked[-30:])}. Current vibe: "{vibe}".
-            Recommend ONE perfect movie. Return JSON: {{'title': '', 'year': '', 'reason': '', 'emoji': ''}}
-            """
-            with st.spinner("Matching vibe..."):
+            prompt = f"Recommend ONE movie for vibe: '{vibe}'. Return JSON: {{'title':'', 'reason':''}}"
+            with st.spinner("Searching..."):
                 res = call_gemini(prompt)
                 if res:
-                    st.info(f"{res['emoji']} **{res['title']}** ({res['year']})")
+                    st.info(f"🎥 **{res['title']}**")
                     st.write(res['reason'])
 
-    elif option == "Trivia":
-        if st.button("Generate Question"):
+    elif mode == "Trivia":
+        if st.button("New Question"):
             loved = [m['title'] for m in st.session_state.user_movies if m['rating'] == 'loved']
             if not loved:
-                st.error("Mark some movies as LOVED first!")
+                st.error("Love some movies first!")
             else:
-                prompt = f"""
-                Pick one random movie: {', '.join(loved)}.
-                Generate trivia. Return JSON: {{'movie': '', 'question': '', 'options': ['A','B','C','D'], 'correctIndex': 0, 'explanation': ''}}
-                """
-                with st.spinner("Generating trivia..."):
-                    res = call_gemini(prompt)
-                    if res:
-                        st.session_state.trivia = res
+                prompt = f"Trivia for: {random.choice(loved)}. JSON: {{'q':'', 'options':['a','b'], 'correct':0}}"
+                res = call_gemini(prompt)
+                if res:
+                    st.session_state.trivia = res
         
         if 'trivia' in st.session_state:
             t = st.session_state.trivia
-            st.subheader(f"Trivia: {t['movie']}")
-            st.write(t['question'])
-            
-            ans = st.radio("Choose answer:", t['options'])
-            if st.button("Submit Answer"):
-                idx = t['options'].index(ans)
-                if idx == t['correctIndex']:
+            st.write(f"**Q:** {t['q']}")
+            ans = st.radio("Answer:", t['options'])
+            if st.button("Check"):
+                if t['options'].index(ans) == t['correct']:
                     st.balloons()
                     st.success("Correct!")
                 else:
-                    st.error(f"Wrong! The answer was: {t['options'][t['correctIndex']]}")
-                st.info(t['explanation'])
+                    st.error("Wrong!")
 
 # === ADD TAB ===
-with tab_add:
-    st.header("Add Manually")
-    new_title = st.text_input("Movie Title")
+with tab5:
+    st.markdown("### ➕ Add Manually")
+    new_title = st.text_input("Movie Title", placeholder="Type movie name...")
     
-    c1, c2, c3, c4, c5 = st.columns(5)
-    if c1.button("👍 Liked"):
-        if new_title: add_rating(new_title, "liked"); st.success(f"Added {new_title}");
-    if c2.button("❤️ Loved"):
-        if new_title: add_rating(new_title, "loved"); st.success(f"Added {new_title}");
-    if c3.button("👎 Dislike"):
-        if new_title: add_rating(new_title, "disliked"); st.success(f"Added {new_title}");
-    if c4.button("😠 Hated"):
-        if new_title: add_rating(new_title, "hated"); st.success(f"Added {new_title}");
-    if c5.button("⏰ Watch"):
-        if new_title: add_rating(new_title, "watchlist"); st.success(f"Added {new_title}");
+    # 2x2 Grid for Ratings
+    r1, r2 = st.columns(2)
+    with r1:
+        if st.button("👍 Liked", key="add_like"):
+            if new_title: add_rating(new_title, "liked"); st.success("Added!");
+        if st.button("👎 Dislike", key="add_dis"):
+            if new_title: add_rating(new_title, "disliked"); st.success("Added!");
+            
+    with r2:
+        if st.button("❤️ Loved", key="add_love"):
+            if new_title: add_rating(new_title, "loved"); st.success("Added!");
+        if st.button("😠 Hated", key="add_hate"):
+            if new_title: add_rating(new_title, "hated"); st.success("Added!");
+            
+    if st.button("⏰ Add to Watchlist", key="add_watch", type="primary"):
+        if new_title: add_rating(new_title, "watchlist"); st.success("Saved!");
