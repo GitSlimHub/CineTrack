@@ -6,6 +6,7 @@ import requests
 from datetime import datetime
 
 # --- CONFIGURATION ---
+
 API_KEY = st.secrets["GEMINI_API_KEY"]
 
 DATA_FILE = "my_movie_database.json"
@@ -135,7 +136,7 @@ st.markdown("""
         transform: scale(0.98);
     }
 
-    /* Tabs at TOP (Default Streamlit behavior restored, just styled) */
+    /* Tabs at TOP */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent;
@@ -163,6 +164,15 @@ st.markdown("""
     /* Hide the default hamburger menu */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    
+    /* FORCE COLUMNS TO STAY SIDE-BY-SIDE ON MOBILE */
+    @media (max-width: 640px) {
+        div[data-testid="column"] {
+            width: 50% !important;
+            flex: 0 1 50% !important;
+            min-width: 50% !important;
+        }
+    }
     
     /* Custom Card Style for List */
     .movie-card {
