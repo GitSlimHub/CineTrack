@@ -9,12 +9,8 @@ from datetime import datetime
 API_KEY = st.secrets["GEMINI_API_KEY"]
 
 # --- PASSWORD CONFIGURATION ---
-try:
-    # Try to get password from Cloud Secrets
-    APP_PASSWORD = st.secrets["APP_PASSWORD"]
-except:
-    # Fallback password for local testing (Change this!)
-    APP_PASSWORD = "password123"
+APP_PASSWORD = st.secrets["APP_PASSWORD"]
+
 
 DATA_FILE = "my_movie_database.json"
 
@@ -469,3 +465,4 @@ with tab5:
             
     if st.button("⏰ Add to Watchlist", key="add_watch", type="primary"):
         if new_title: add_rating(new_title, "watchlist"); st.success("Saved!");
+
