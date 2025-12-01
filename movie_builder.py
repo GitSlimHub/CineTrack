@@ -6,8 +6,15 @@ import requests
 from datetime import datetime
 
 # --- CONFIGURATION ---
-
 API_KEY = st.secrets["GEMINI_API_KEY"]
+
+# --- PASSWORD CONFIGURATION ---
+try:
+    # Try to get password from Cloud Secrets
+    APP_PASSWORD = st.secrets["APP_PASSWORD"]
+except:
+    # Fallback password for local testing (Change this!)
+    APP_PASSWORD = "password123"
 
 DATA_FILE = "my_movie_database.json"
 
@@ -215,6 +222,9 @@ if 'current_movie' not in st.session_state:
 if 'skipped_session' not in st.session_state:
     st.session_state.skipped_session = set()
 
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
 # --- HELPER FUNCTIONS ---
 def add_rating(title, rating):
     st.session_state.user_movies = [m for m in st.session_state.user_movies if m['title'] != title]
@@ -262,6 +272,22 @@ def generate_unlimited_movies():
             st.session_state.dynamic_pool = list(set(st.session_state.dynamic_pool))
             save_data()
             st.rerun()
+
+# --- AUTHENTICATION ---
+if not st.session_state.authenticated:
+    st.markdown("<h1 style='text-align: center;'>🔒 CineTrack Locked</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray;'>Enter password to access your movie database.</p>", unsafe_allow_html=True)
+    
+    password_input = st.text_input("Password", type="password")
+    
+    if st.button("Unlock"):
+        if password_input == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password!")
+    
+    st.stop() # Stop execution here if not authenticated
 
 # --- MAIN APP UI ---
 
