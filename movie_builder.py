@@ -6,7 +6,6 @@ import requests
 from datetime import datetime
 
 # --- CONFIGURATION ---
-
 API_KEY = st.secrets["GEMINI_API_KEY"]
 
 DATA_FILE = "my_movie_database.json"
@@ -136,17 +135,12 @@ st.markdown("""
         transform: scale(0.98);
     }
 
-    /* Style the tabs to look more like an app nav bar */
+    /* Tabs at TOP (Default Streamlit behavior restored, just styled) */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        background-color: #0e1117;
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 999;
-        padding: 10px;
-        border-top: 1px solid #333;
+        background-color: transparent;
+        padding: 10px 0px;
+        border-bottom: 1px solid #333;
         justify-content: space-around;
         border-radius: 0px;
     }
@@ -169,11 +163,6 @@ st.markdown("""
     /* Hide the default hamburger menu */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    
-    /* Add padding to bottom of main content so nav bar doesn't cover it */
-    .main .block-container {
-        padding-bottom: 100px;
-    }
     
     /* Custom Card Style for List */
     .movie-card {
@@ -266,8 +255,7 @@ def generate_unlimited_movies():
 
 # --- MAIN APP UI ---
 
-# We use tabs as bottom navigation (via CSS hack above)
-# The order is: Rapid, List, Watchlist, AI, Add
+# We use tabs at the top now
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔥 Play", "📋 List", "⏰ Watch", "✨ AI", "➕ Add"])
 
 # === RAPID FIRE TAB ===
@@ -280,34 +268,40 @@ with tab1:
     if movie:
         st.markdown(f"<div style='text-align:center; padding: 20px 0;'><h1 style='color:#FFD700; margin-bottom:0;'>{movie}</h1><p style='color:#666;'>Have you seen this?</p></div>", unsafe_allow_html=True)
         
-        # 2x2 Grid for Main Actions (Better for Mobile)
+        # ROW 1: POSITIVE ACTIONS (Like & Love)
         c1, c2 = st.columns(2)
         with c1:
             if st.button("👍 LIKE", key="rf_like", type="primary"):
                 add_rating(movie, "liked")
                 st.rerun()
-            if st.button("👎 DISLIKE", key="rf_dislike"):
-                add_rating(movie, "disliked")
-                st.rerun()
-        
         with c2:
             if st.button("❤️ LOVE", key="rf_love", type="primary"):
                 add_rating(movie, "loved")
                 st.rerun()
+
+        # ROW 2: NEGATIVE ACTIONS (Dislike & Hate)
+        c3, c4 = st.columns(2)
+        with c3:
+            if st.button("👎 DISLIKE", key="rf_dislike"):
+                add_rating(movie, "disliked")
+                st.rerun()
+        with c4:
             if st.button("😠 HATE", key="rf_hate"):
                 add_rating(movie, "hated")
                 st.rerun()
 
         # Secondary Actions (Full Width)
         st.write("") # Spacer
-        if st.button("⏰ Add to Watchlist", key="rf_watch"):
-            add_rating(movie, "watchlist")
-            st.rerun()
-            
-        if st.button("⏭️ Skip / Haven't Seen", key="rf_skip"):
-            st.session_state.skipped_session.add(movie)
-            st.session_state.current_movie = None
-            st.rerun()
+        c5, c6 = st.columns(2)
+        with c5:
+            if st.button("⏰ Watchlist", key="rf_watch"):
+                add_rating(movie, "watchlist")
+                st.rerun()
+        with c6:    
+            if st.button("⏭️ Skip", key="rf_skip"):
+                st.session_state.skipped_session.add(movie)
+                st.session_state.current_movie = None
+                st.rerun()
             
     else:
         st.info("🎉 Database empty!")
